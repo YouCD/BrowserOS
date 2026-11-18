@@ -72,10 +72,25 @@ pub fn streamable_http_service(
     state: AppState,
 ) -> StreamableHttpService<ClawMcpService, LocalSessionManager> {
     let transport_sessions = transport_session_manager(state.config.session_idle);
+    let listen_host = crate::config::resolve_listen_host();
+    // rmcp's default allowed_hosts is loopback-only (localhost/127.0.0.1/::1), which suits
+    // a machine-local server. When the listener is bound to a non-loopback interface
+    // (CLAW_LISTEN_HOST), the socket is intentionally reachable from the network, so relax
+    // the Host gate to match — otherwise every external MCP client is rejected with 403
+    // "Host header is not allowed".
+    let server_config = if listen_host.is_loopback() {
+        StreamableHttpServerConfig::default()
+    } else {
+        tracing::warn!(
+            %listen_host,
+            "MCP host validation disabled: non-loopback listener accepts any Host header"
+        );
+        StreamableHttpServerConfig::default().disable_allowed_hosts()
+    };
     StreamableHttpService::new(
         move || Ok(browser_mcp_service(state.clone())),
         Arc::new(transport_sessions),
-        StreamableHttpServerConfig::default(),
+        server_config,
     )
 }
 

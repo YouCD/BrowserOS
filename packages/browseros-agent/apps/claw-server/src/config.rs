@@ -9,6 +9,7 @@ use serde::Deserialize;
 use std::{
     collections::BTreeMap,
     env, fs,
+    net::{IpAddr, Ipv4Addr},
     num::{NonZeroU16, NonZeroU64},
     path::{Path, PathBuf},
     time::Duration,
@@ -337,6 +338,18 @@ fn resolve_mode(env: &ConfigEnv) -> anyhow::Result<ServerMode> {
         "" | "0" => Ok(ServerMode::Desktop),
         "1" => Ok(ServerMode::Hosted),
         raw => anyhow::bail!("{HOSTED_MODE_ENV} must be \"0\" or \"1\", got {raw:?}"),
+    }
+}
+
+/// The interface the HTTP listener binds to, from `CLAW_LISTEN_HOST`. Unset or blank keeps
+/// the loopback default; an unparseable value also falls back to loopback (the safe
+/// direction) rather than a non-loopback bind. Read before logging starts, so it reports
+/// nothing here — the bind and the MCP host gate log what they do with it.
+pub fn resolve_listen_host() -> IpAddr {
+    const LISTEN_HOST_ENV: &str = "CLAW_LISTEN_HOST";
+    match env::var(LISTEN_HOST_ENV).unwrap_or_default().trim().parse::<IpAddr>() {
+        Ok(host) => host,
+        Err(_) => Ipv4Addr::new(127, 0, 0, 1).into(),
     }
 }
 

@@ -12,7 +12,7 @@ use serde_json::json;
 use std::{
     future::Future,
     io::{self, Write},
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     path::{Path, PathBuf},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -36,8 +36,9 @@ const EXIT_PORT_CONFLICT: i32 = 2;
 /// Carried as an error rather than exiting where it is detected, so the runtime
 /// still tears down and the exit code is decided in one place.
 #[derive(Debug, thiserror::Error)]
-#[error("claw-server singleton is already running on 127.0.0.1:{port}")]
+#[error("claw-server singleton is already running on {host}:{port}")]
 struct PortConflict {
+    host: IpAddr,
     port: u16,
 }
 
@@ -301,17 +302,27 @@ async fn serve_with_boot_task(
     analytics: Arc<dyn AnalyticsSink>,
     boot_task: impl Future<Output = ()> + Send + 'static,
 ) -> anyhow::Result<()> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], config.server_port));
+    let listen_host = claw_server::config::resolve_listen_host();
+    let addr = SocketAddr::new(listen_host, config.server_port);
     let listener = match TcpListener::bind(addr).await {
         Ok(listener) => listener,
         Err(err) if err.kind() == io::ErrorKind::AddrInUse => {
             return Err(PortConflict {
+                host: listen_host,
                 port: config.server_port,
             }
             .into());
         }
         Err(err) => return Err(err).context("failed to bind claw-server listener"),
     };
+    // The bind is process-wide: a non-loopback address exposes every API endpoint,
+    // not just /mcp, so anyone who can reach the port can drive the logged-in browser.
+    if !listen_host.is_loopback() {
+        warn!(
+            %listen_host,
+            "claw-server bound to a non-loopback interface; every API endpoint is reachable from the network"
+        );
+    }
     // Deliberately after the bind and before serving, and only on this path. Closing the
     // sessions of a process that is gone means closing every session with no end row, and
     // that query cannot tell one of those from a session running right now. It is only

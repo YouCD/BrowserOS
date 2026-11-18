@@ -18,7 +18,7 @@ FROM scratch AS neo-deb
 # Releases supply this commit's server; standalone builds keep the .deb's server.
 FROM scratch AS neo-server
 
-FROM ubuntu:24.04 AS neo-runtime
+FROM ubuntu:26.04 AS neo-runtime
 
 ARG TARGETARCH
 ARG NEO_VERSION=""
@@ -31,13 +31,27 @@ LABEL org.opencontainers.image.source="https://github.com/browseros-ai/BrowserOS
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Use the Tsinghua (TUNA) mirror for apt. The codename comes from os-release
+# so this works on any Ubuntu release (24.04 noble, 26.04, ...).
+#
+# Plain http (not https): the base image talks to its own archive sources over
+# http and does not ship ca-certificates, so an https source would fail TLS
+# verification on the very first apt-get update.
+RUN codename=$(. /etc/os-release && echo "$VERSION_CODENAME") && \
+    printf 'deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu/ %s main restricted universe multiverse\n' "$codename" > /etc/apt/sources.list && \
+    printf 'deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu/ %s-updates main restricted universe multiverse\n' "$codename" >> /etc/apt/sources.list && \
+    printf 'deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu/ %s-security main restricted universe multiverse\n' "$codename" >> /etc/apt/sources.list && \
+    rm -f /etc/apt/sources.list.d/ubuntu.sources
+
 # libasound2t64 must be installed before Neo: the .deb's unversioned
 # `Depends: libasound2` otherwise resolves to an OSS shim and Neo exits 127.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      ca-certificates curl jq tini \
+      ca-certificates curl jq tini locales \
       tigervnc-standalone-server tigervnc-tools openbox novnc websockify \
-      libasound2t64 fonts-liberation fonts-noto-core fonts-noto-color-emoji fonts-wqy-zenhei fonts-ipafont-gothic \
+      libasound2t64 fonts-liberation fonts-noto-core fonts-noto-color-emoji fonts-noto-cjk fonts-wqy-zenhei fonts-ipafont-gothic \
+ && sed -i 's/^# *zh_CN.UTF-8 UTF-8/zh_CN.UTF-8 UTF-8/' /etc/locale.gen \
+ && locale-gen \
  && rm -rf /var/lib/apt/lists/*
 
 # The CDN publishes one release.json per Linux release listing each package's
@@ -88,7 +102,10 @@ COPY openbox-rc.xml /etc/neo/openbox-rc.xml
 # COPY their own over it (README), including [run] wall_timeout_seconds (default 60).
 COPY neo.toml /etc/neo/neo.toml
 COPY novnc-index.html /usr/share/novnc/index.html
-# Load the clipboard bridge from vnc.html too: embedded viewers bypass index.html.
+# The clipboard bridge still works on noVNC 1.6.0: every UI/rfb API it uses
+# (openClipboardPanel, clipboardReceive/Send, rfb.clipboardPasteFrom) is present,
+# and it loads after UI.start(), so it replaces (not duplicates) the native
+# change listener. Load from vnc.html too: embedded viewers bypass index.html.
 COPY clipboard.js /usr/share/novnc/app/clipboard.js
 RUN sed -i '/<\/body>/i\    <script type="module" src="app/clipboard.js"></script>' /usr/share/novnc/vnc.html
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/neo-entrypoint

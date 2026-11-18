@@ -31,7 +31,7 @@ readonly CDP_PORT=9110
 readonly SERVER_PORT=9210
 
 : "${NEO_SCREEN:=1600x1000}" "${NEO_SANDBOX:=false}" "${NEO_ARGS:=}"
-: "${NEO_SOFTWARE_GRAPHICS:=true}"
+: "${NEO_LANG:=C.UTF-8}" "${NEO_SOFTWARE_GRAPHICS:=true}"
 # Agents drive Neo over MCP, which needs none of the bundled BrowserOS
 # extensions, so they are off unless a deployment wants their UI or rrweb page
 # recordings back (README).
@@ -74,7 +74,7 @@ esac
 # a wrapper shell that dies on SIGTERM while the program keeps running.
 spawn_as_neo() {
   (exec setpriv --reuid=neo --regid=neo --init-groups \
-    env HOME="$NEO_HOME" USER=neo DISPLAY=:1 XDG_RUNTIME_DIR="$XDG_DIR" LANG=C.UTF-8 \
+    env HOME="$NEO_HOME" USER=neo DISPLAY=:1 XDG_RUNTIME_DIR="$XDG_DIR" LANG="$NEO_LANG" \
       BROWSERCLAW_DIR="$CLAW_DATA" BROWSERCLAW_HOSTED_MODE="$BROWSERCLAW_HOSTED_MODE" \
       BROWSEROS_OUTPUT_DIR="$OUTPUTS" "$@") &
 }
