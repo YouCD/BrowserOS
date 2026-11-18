@@ -61,6 +61,7 @@ async fn test_app(setup: Setup) -> anyhow::Result<TestApp> {
         resources_dir: dir.path().join("resources"),
         browserclaw_dir: dir.path().join("browserclaw"),
         session_idle: Duration::from_secs(300),
+        session_complete_idle: Duration::from_secs(300),
         session_retention: Duration::from_secs(7_200),
         session_sweep_interval: Duration::from_secs(60),
         replay_retention_days: 7,
@@ -403,7 +404,7 @@ async fn agents_are_taught_pursue_only_when_it_is_offered() -> anyhow::Result<()
     let offered = test_app(ULTRAFAST_DESKTOP).await?;
     let (_, instructions) = connect_reading_instructions(&offered).await?;
     assert!(
-        instructions.contains("Start each task that does something on a site with pursue"),
+        instructions.contains("Pick the tool by the path, not the goal."),
         "{instructions}"
     );
     assert!(
